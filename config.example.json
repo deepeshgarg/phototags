@@ -1,0 +1,7 @@
+{
+  "photo_directories": [
+    "/path/to/your/photos"
+  ],
+  "output_file": "output.csv",
+  "geonames_file": "geonames-all-cities-with-a-population-1000.csv"
+}

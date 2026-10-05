@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Photo Library</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9;
+       color: #1e293b; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+/* ── Header ─────────────────────────────────────────── */
+#header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 0 16px; height: 56px; background: #fff;
+  border-bottom: 1px solid #e2e8f0; flex-shrink: 0; z-index: 10;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+#header .logo { font-size: 1.1rem; font-weight: 700; color: #3b82f6;
+                white-space: nowrap; margin-right: 4px; }
+#chip-bar { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
+  border-radius: 999px; font-size: .78rem; font-weight: 500;
+  background: #3b82f6; color: #fff; cursor: pointer; user-select: none;
+  transition: background .15s;
+}
+.chip:hover { background: #2563eb; }
+.chip .x { opacity: .7; font-size: .9rem; margin-left: 2px; }
+#count-badge {
+  white-space: nowrap; font-size: .82rem; color: #64748b; margin-left: auto; flex-shrink: 0;
+}
+.view-btns { display: flex; gap: 0; border: 1px solid #e2e8f0; border-radius: 8px;
+             overflow: hidden; flex-shrink: 0; }
+.view-btns button {
+  padding: 5px 12px; font-size: .8rem; background: #fff; border: none;
+  cursor: pointer; color: #64748b; transition: background .15s, color .15s;
+}
+.view-btns button.active { background: #3b82f6; color: #fff; }
+
+/* ── Layout ─────────────────────────────────────────── */
+#layout { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ─────────────────────────────────────────── */
+#sidebar {
+  width: 232px; flex-shrink: 0; background: #fff;
+  border-right: 1px solid #e2e8f0; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.sidebar-section { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+.sidebar-heading {
+  padding: 6px 14px 4px; font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .6px; color: #94a3b8;
+}
+.tree-item {
+  display: flex; align-items: center; padding: 5px 14px; cursor: pointer;
+  font-size: .82rem; color: #374151; border-radius: 0;
+  transition: background .1s; user-select: none; gap: 4px;
+}
+.tree-item:hover { background: #f8fafc; }
+.tree-item.active { background: #eff6ff; color: #2563eb; font-weight: 600; }
+.tree-item .arrow {
+  font-size: .7rem; color: #cbd5e1; transition: transform .2s;
+  width: 14px; flex-shrink: 0; display: inline-block; text-align: center;
+}
+.tree-item .arrow.open { transform: rotate(90deg); }
+.tree-item .lbl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-item .cnt {
+  font-size: .72rem; color: #94a3b8; background: #f1f5f9;
+  border-radius: 999px; padding: 1px 7px; flex-shrink: 0;
+}
+.tree-item.active .cnt { background: #dbeafe; color: #2563eb; }
+.tree-children { display: none; }
+.tree-children .tree-item { padding-left: 32px; font-size: .8rem; }
+
+/* ── Main content ─────────────────────────────────────── */
+#content { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
+
+/* ── Photo grid ─────────────────────────────────────── */
+#grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px; padding: 14px;
+}
+.photo-card {
+  background: #fff; border-radius: 10px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.07);
+  cursor: pointer; transition: transform .15s, box-shadow .15s;
+  display: flex; flex-direction: column;
+}
+.photo-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.12); }
+.photo-card .thumb-wrap {
+  width: 100%; aspect-ratio: 4/3; background: #e2e8f0;
+  overflow: hidden; position: relative;
+}
+.photo-card img {
+  width: 100%; height: 100%; object-fit: cover;
+  display: block; transition: opacity .2s;
+}
+.photo-card .thumb-wrap .no-img {
+  width: 100%; height: 100%; display: flex; align-items: center;
+  justify-content: center; font-size: 2rem; color: #cbd5e1;
+}
+.photo-card .info {
+  padding: 6px 9px 8px; min-height: 46px;
+}
+.photo-card .info .date { font-size: .72rem; color: #64748b; }
+.photo-card .info .loc {
+  font-size: .78rem; font-weight: 500; color: #374151;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Map view ─────────────────────────────────────────── */
+#map-view { height: 100%; display: none; }
+#leaflet-map { height: 100%; }
+
+/* ── Loading / empty ─────────────────────────────────── */
+#loading { text-align: center; padding: 40px; color: #94a3b8; font-size: .9rem; }
+#empty-msg { text-align: center; padding: 60px 20px; color: #94a3b8; }
+#empty-msg .icon { font-size: 3rem; margin-bottom: 12px; }
+
+/* ── Lightbox ─────────────────────────────────────────── */
+#lightbox {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,.88); align-items: center; justify-content: center;
+}
+#lightbox.open { display: flex; }
+#lightbox .lb-inner {
+  max-width: 92vw; max-height: 90vh; display: flex; flex-direction: column;
+  align-items: center; gap: 12px;
+}
+#lightbox img { max-width: 100%; max-height: 78vh; object-fit: contain;
+                border-radius: 8px; }
+#lightbox .lb-info { color: #e2e8f0; font-size: .9rem; text-align: center; }
+#lightbox .lb-info b { color: #fff; }
+#lightbox .lb-close {
+  position: fixed; top: 16px; right: 20px; font-size: 1.8rem; color: #fff;
+  cursor: pointer; background: none; border: none; opacity: .7;
+}
+#lightbox .lb-close:hover { opacity: 1; }
+#lb-nav { display: flex; gap: 16px; }
+#lb-nav button {
+  background: rgba(255,255,255,.1); border: none; color: #fff;
+  padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: .9rem;
+}
+#lb-nav button:hover { background: rgba(255,255,255,.2); }
+#lb-nav button.active { background: #3b82f6; }
+#lb-nav button.active:hover { background: #2563eb; }
+
+/* ── Slideshow (fullscreen) ────────────────────────────── */
+#lightbox:fullscreen { background: #000; }
+
+/* ── Scrollbar ───────────────────────────────────────── */
+#sidebar::-webkit-scrollbar, #content::-webkit-scrollbar { width: 5px; }
+#sidebar::-webkit-scrollbar-thumb, #content::-webkit-scrollbar-thumb
+  { background: #e2e8f0; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="logo">&#128247; Photo Library</div>
+  <div id="chip-bar"></div>
+  <span id="count-badge">Loading…</span>
+  <div class="view-btns">
+    <button id="btn-grid" class="active" onclick="setView('grid')">&#8862; Grid</button>
+    <button id="btn-map" onclick="setView('map')">&#127758; Map</button>
+  </div>
+</div>
+
+<div id="layout">
+  <aside id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-heading">&#128197; Date</div>
+      <div id="date-tree"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-heading">&#128205; Location</div>
+      <div id="loc-tree"></div>
+    </div>
+  </aside>
+
+  <div id="content">
+    <div id="grid-view"></div>
+    <div id="map-view"><div id="leaflet-map"></div></div>
+    <div id="loading" style="display:none">Loading photos…</div>
+    <div id="sentinel" style="height:1px"></div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button class="lb-close" onclick="closeLightbox()">&#x2715;</button>
+  <div class="lb-inner">
+    <img id="lb-img" src="" alt="">
+    <div class="lb-info" id="lb-info"></div>
+    <div id="lb-nav">
+      <button onclick="lbStep(-1)">&#8592; Prev</button>
+      <button id="btn-slideshow" onclick="toggleSlideshow()">&#9654; Slideshow</button>
+      <button onclick="lbStep(1)">Next &#8594;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const MONTHS = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ── State ─────────────────────────────────────────────
+const state = {
+  year: null, month: null, country: null, city: null,
+  page: 0, total: 0, loading: false, allLoaded: false,
+  view: 'grid',
+  expandedYears: new Set(), expandedCountries: new Set(),
+};
+
+let summary = null;
+let currentPhotos = [];   // all loaded so far
+let lbIndex = 0;
+let leafletMap = null;
+let slideshowTimer = null;
+const SLIDESHOW_INTERVAL_MS = 6000;
+
+// ── Init ──────────────────────────────────────────────
+async function init() {
+  summary = await fetch('/api/summary').then(r => r.json());
+  renderDateTree();
+  renderLocTree();
+  await resetAndLoad();
+
+  const sentinel = document.getElementById('sentinel');
+  new IntersectionObserver(([e]) => {
+    if (e.isIntersecting && !state.loading && !state.allLoaded) loadMore();
+  }, { rootMargin: '400px' }).observe(sentinel);
+
+  document.getElementById('lightbox').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeLightbox();
+  });
+  document.addEventListener('keydown', e => {
+    if (!document.getElementById('lightbox').classList.contains('open')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') { stopSlideshow(); lbStep(-1); }
+    if (e.key === 'ArrowRight') { stopSlideshow(); lbStep(1); }
+    if (e.key === ' ') { e.preventDefault(); toggleSlideshow(); }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) stopSlideshow();
+  });
+}
+
+// ── Filter trees ───────────────────────────────────────
+function renderDateTree() {
+  const el = document.getElementById('date-tree');
+  el.innerHTML = summary.dates.map(yd => {
+    const yearActive = state.year === yd.year;
+    const open = state.expandedYears.has(yd.year);
+    return `
+      <div>
+        <div class="tree-item ${yearActive && !state.month ? 'active' : ''}"
+             data-year="${yd.year}">
+          <span class="arrow ${open ? 'open' : ''}"
+                onclick="toggleYear(event,'${yd.year}')">&#9658;</span>
+          <span class="lbl" onclick="selectYear('${yd.year}')">${yd.year}</span>
+          <span class="cnt">${fmt(yd.count)}</span>
+        </div>
+        <div class="tree-children" id="yc-${yd.year}" style="display:${open?'block':'none'}">
+          ${yd.months.map(m => `
+            <div class="tree-item ${yearActive && state.month === m.month ? 'active' : ''}"
+                 onclick="selectMonth('${yd.year}','${m.month}')">
+              <span class="lbl">${MONTHS[+m.month]}</span>
+              <span class="cnt">${fmt(m.count)}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderLocTree() {
+  const el = document.getElementById('loc-tree');
+  el.innerHTML = summary.locations.map(loc => {
+    const cActive = state.country === loc.country;
+    const open = state.expandedCountries.has(loc.country);
+    return `
+      <div>
+        <div class="tree-item ${cActive && !state.city ? 'active' : ''}"
+             data-country="${loc.country}">
+          <span class="arrow ${open ? 'open' : ''}"
+                onclick="toggleCountry(event,'${esc(loc.country)}')">&#9658;</span>
+          <span class="lbl" onclick="selectCountry('${esc(loc.country)}')">${loc.country}</span>
+          <span class="cnt">${fmt(loc.count)}</span>
+        </div>
+        <div class="tree-children" id="cc-${slug(loc.country)}" style="display:${open?'block':'none'}">
+          ${loc.cities.map(c => `
+            <div class="tree-item ${cActive && state.city === c.city ? 'active' : ''}"
+                 onclick="selectCity('${esc(loc.country)}','${esc(c.city)}')">
+              <span class="lbl">${c.city}</span>
+              <span class="cnt">${fmt(c.count)}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderChips() {
+  const chips = [];
+  if (state.year) {
+    const label = state.month ? `${MONTHS[+state.month]} ${state.year}` : state.year;
+    chips.push(`<span class="chip" onclick="clearDate()">&#128197; ${label} <span class="x">&#x2715;</span></span>`);
+  }
+  if (state.country) {
+    const label = state.city ? `${state.city}, ${state.country}` : state.country;
+    chips.push(`<span class="chip" onclick="clearLoc()">&#128205; ${label} <span class="x">&#x2715;</span></span>`);
+  }
+  document.getElementById('chip-bar').innerHTML = chips.join('');
+  document.getElementById('count-badge').textContent =
+    `${fmt(state.total)} photo${state.total !== 1 ? 's' : ''}`;
+}
+
+// ── Filter actions ─────────────────────────────────────
+function selectYear(y) {
+  state.year = (state.year === y && !state.month) ? null : y;
+  state.month = null;
+  state.expandedYears.add(y);
+  resetAndLoad();
+}
+function selectMonth(y, m) {
+  state.year = y; state.month = (state.month === m && state.year === y) ? null : m;
+  resetAndLoad();
+}
+function selectCountry(c) {
+  state.country = (state.country === c && !state.city) ? null : c;
+  state.city = null;
+  state.expandedCountries.add(c);
+  resetAndLoad();
+}
+function selectCity(c, ci) {
+  state.country = c; state.city = (state.city === ci) ? null : ci;
+  resetAndLoad();
+}
+function clearDate() { state.year = null; state.month = null; resetAndLoad(); }
+function clearLoc()  { state.country = null; state.city = null; resetAndLoad(); }
+
+function toggleYear(e, y) {
+  e.stopPropagation();
+  if (state.expandedYears.has(y)) state.expandedYears.delete(y);
+  else state.expandedYears.add(y);
+  const el = document.getElementById(`yc-${y}`);
+  const arrow = e.target;
+  if (el) { el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+  arrow.classList.toggle('open');
+}
+function toggleCountry(e, c) {
+  e.stopPropagation();
+  if (state.expandedCountries.has(c)) state.expandedCountries.delete(c);
+  else state.expandedCountries.add(c);
+  const el = document.getElementById(`cc-${slug(c)}`);
+  const arrow = e.target;
+  if (el) { el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
+  arrow.classList.toggle('open');
+}
+
+// ── Load photos ────────────────────────────────────────
+async function resetAndLoad() {
+  state.page = 0; state.allLoaded = false;
+  currentPhotos = [];
+  document.getElementById('grid-view').innerHTML = '';
+  renderDateTree();
+  renderLocTree();
+  await loadMore();
+  if (state.view === 'map') renderMap();
+}
+
+async function loadMore() {
+  if (state.loading || state.allLoaded) return;
+  state.loading = true;
+  showLoading(true);
+
+  const params = new URLSearchParams({ page: state.page, per_page: 60 });
+  if (state.year)    params.set('year', state.year);
+  if (state.month)   params.set('month', state.month);
+  if (state.country) params.set('country', state.country);
+  if (state.city)    params.set('city', state.city);
+
+  try {
+    const data = await fetch(`/api/photos?${params}`).then(r => r.json());
+    state.total = data.total;
+    state.page++;
+    if (data.photos.length < 60 || currentPhotos.length + data.photos.length >= data.total) {
+      state.allLoaded = true;
+    }
+    currentPhotos.push(...data.photos);
+    appendPhotos(data.photos);
+    renderChips();
+  } catch(e) { console.error(e); }
+
+  state.loading = false;
+  showLoading(false);
+  if (currentPhotos.length === 0) showEmpty(true);
+  else showEmpty(false);
+}
+
+function showLoading(v) { document.getElementById('loading').style.display = v ? 'block' : 'none'; }
+function showEmpty(v) {
+  const g = document.getElementById('grid-view');
+  if (v && !g.querySelector('.empty-msg')) {
+    g.innerHTML = `<div class="empty-msg" style="grid-column:1/-1;text-align:center;padding:60px;color:#94a3b8">
+      <div style="font-size:3rem">&#128247;</div>
+      <p style="margin-top:12px">No photos match the current filter.</p></div>`;
+  }
+}
+
+// ── Render grid ────────────────────────────────────────
+function appendPhotos(photos) {
+  const grid = document.getElementById('grid-view');
+  photos.forEach((p, i) => {
+    const idx = currentPhotos.length - photos.length + i;
+    const card = document.createElement('div');
+    card.className = 'photo-card';
+    card.dataset.idx = idx;
+    card.onclick = () => openLightbox(idx);
+
+    const loc = [p.city, p.country].filter(Boolean).join(', ') || 'No location';
+    const thumbUrl = `/api/thumb?path=${encodeURIComponent(p.file)}&size=220`;
+
+    card.innerHTML = `
+      <div class="thumb-wrap">
+        <img src="${thumbUrl}" alt="${p.date}" loading="lazy"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="no-img" style="display:none">&#128247;</div>
+      </div>
+      <div class="info">
+        <div class="date">${p.date || '—'}</div>
+        <div class="loc" title="${loc}">${loc}</div>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+// ── View toggle ────────────────────────────────────────
+function setView(v) {
+  state.view = v;
+  document.getElementById('grid-view').style.display = v === 'grid' ? 'grid' : 'none';
+  document.getElementById('map-view').style.display  = v === 'map'  ? 'block' : 'none';
+  document.getElementById('btn-grid').classList.toggle('active', v === 'grid');
+  document.getElementById('btn-map').classList.toggle('active', v === 'map');
+  if (v === 'map') renderMap();
+}
+
+// ── Map view ───────────────────────────────────────────
+async function renderMap() {
+  if (!leafletMap) {
+    leafletMap = L.map('leaflet-map').setView([51.5, 0], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 18
+    }).addTo(leafletMap);
+  } else {
+    leafletMap.eachLayer(l => { if (l instanceof L.CircleMarker) leafletMap.removeLayer(l); });
+  }
+
+  const params = new URLSearchParams({ per_page: 2000 });
+  if (state.year)    params.set('year', state.year);
+  if (state.month)   params.set('month', state.month);
+  if (state.country) params.set('country', state.country);
+  if (state.city)    params.set('city', state.city);
+  const data = await fetch(`/api/photos?${params}`).then(r => r.json());
+
+  const geoPhotos = data.photos.filter(p => p.lat && p.lon);
+  if (!geoPhotos.length) return;
+
+  // Bucket by rounded coords
+  const buckets = {};
+  geoPhotos.forEach(p => {
+    const key = `${(+p.lat).toFixed(2)},${(+p.lon).toFixed(2)}`;
+    if (!buckets[key]) buckets[key] = { lat: +p.lat, lon: +p.lon, photos: [] };
+    buckets[key].photos.push(p);
+  });
+
+  const maxN = Math.max(...Object.values(buckets).map(b => b.photos.length));
+
+  Object.values(buckets).forEach(b => {
+    const n = b.photos.length;
+    const t = Math.log1p(n) / Math.log1p(maxN);
+    const r = 6 + t * 26;
+    const hue = Math.round(220 - t * 200);  // blue → red
+    const color = `hsl(${hue},80%,50%)`;
+    const sample = b.photos[0];
+    const loc = [sample.city, sample.country].filter(Boolean).join(', ');
+    L.circleMarker([b.lat, b.lon], {
+      radius: r, color: '#fff', weight: 1.5, fillColor: color, fillOpacity: .75
+    }).bindPopup(`<b>${loc || 'Unknown'}</b><br>${n} photo${n>1?'s':''}
+      ${n===1 ? `<br><small>${sample.date}</small>` : ''}`).addTo(leafletMap);
+  });
+
+  const lats = geoPhotos.map(p => +p.lat), lons = geoPhotos.map(p => +p.lon);
+  leafletMap.fitBounds([[Math.min(...lats), Math.min(...lons)],
+                        [Math.max(...lats), Math.max(...lons)]], { padding: [30,30] });
+  setTimeout(() => leafletMap.invalidateSize(), 100);
+}
+
+// ── Lightbox ───────────────────────────────────────────
+function openLightbox(idx) {
+  lbIndex = idx;
+  showLbPhoto();
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  stopSlideshow();
+  document.getElementById('lightbox').classList.remove('open');
+}
+function lbStep(d) {
+  const atEnd = lbIndex >= currentPhotos.length - 1 && state.allLoaded;
+  if (d > 0 && atEnd) { stopSlideshow(); return; }
+  lbIndex = Math.max(0, Math.min(currentPhotos.length - 1, lbIndex + d));
+  if (lbIndex >= currentPhotos.length - 4 && !state.allLoaded) loadMore();
+  showLbPhoto();
+}
+
+// ── Slideshow ──────────────────────────────────────────
+function toggleSlideshow() { slideshowTimer ? stopSlideshow() : startSlideshow(); }
+
+function startSlideshow() {
+  const lb = document.getElementById('lightbox');
+  if (lb.requestFullscreen) lb.requestFullscreen().catch(() => {});
+  const btn = document.getElementById('btn-slideshow');
+  btn.innerHTML = '&#10074;&#10074; Pause';
+  btn.classList.add('active');
+  slideshowTimer = setInterval(() => lbStep(1), SLIDESHOW_INTERVAL_MS);
+}
+
+function stopSlideshow() {
+  if (!slideshowTimer) return;
+  clearInterval(slideshowTimer);
+  slideshowTimer = null;
+  const btn = document.getElementById('btn-slideshow');
+  if (btn) { btn.innerHTML = '&#9654; Slideshow'; btn.classList.remove('active'); }
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+}
+function showLbPhoto() {
+  const p = currentPhotos[lbIndex];
+  if (!p) return;
+  const img = document.getElementById('lb-img');
+  img.src = `/photo?path=${encodeURIComponent(p.file)}`;
+  const loc = [p.city, p.country].filter(Boolean).join(', ');
+  document.getElementById('lb-info').innerHTML =
+    `<b>${p.date || '—'}</b>${loc ? ' &nbsp;·&nbsp; ' + loc : ''}
+     &nbsp;<span style="opacity:.5;font-size:.8rem">${lbIndex+1} / ${state.total}</span>`;
+}
+
+// ── Helpers ────────────────────────────────────────────
+const fmt = n => Number(n).toLocaleString();
+const esc = s => (s+'').replace(/'/g, "\\'");
+const slug = s => (s+'').replace(/[^a-z0-9]/gi, '_');
+
+init();
+</script>
+</body>
+</html>

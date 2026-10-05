@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+config.json
+output.csv
+geonames-all-cities-with-a-population-1000.csv
